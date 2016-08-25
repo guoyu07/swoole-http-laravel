@@ -1,0 +1,46 @@
+#!/usr/bin/env php
+<?php 
+require __DIR__.'/../bootstrap/autoload.php';
+
+$appGlobal = require_once __DIR__.'/../bootstrap/app.php';
+
+$swooleConfig = require __DIR__.'/config.php';
+require __DIR__.'/Request.php';
+require __DIR__.'/Response.php';
+
+$serv = new swoole_http_server(SWOOLE_HTTP_SERVER_HOST, SWOOLE_HTTP_SERVER_PORT);
+
+if (!empty($swooleConfig['setting'])) {
+    $serv->set($swooleConfig['setting']);
+}
+
+$serv->on('start', function($swooleHttpServer){
+    if (!empty(SWOOLE_HTTP_SERVER_LOG_DIR)) {
+        swooleHttpServerLog('swoole_http_server start');
+    }
+});
+
+$serv->on('shutdown', function($swooleHttpServer){
+    if (!empty(SWOOLE_HTTP_SERVER_LOG_DIR)) {
+        swooleHttpServerLog('swoole_http_server shutdown');
+    }
+});
+
+$serv->on('request', function($swooleRequest, $swooleResponse) {
+    global $appGlobal;
+    $app = clone $appGlobal;
+    $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
+    
+    $response = $kernel->handle(
+        $request = \SwooleAdapter\Request::createWithSwooleRequest($swooleRequest)
+    );
+    \SwooleAdapter\Response::end($swooleResponse, $response);
+    $kernel->terminate($request, $response);
+    $app->flush();
+    unset($app);
+    unset($kernel);
+    unset($request);
+    unset($response);
+});
+
+$serv->start();
